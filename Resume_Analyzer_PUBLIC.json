@@ -1,0 +1,395 @@
+{
+  "name": "Resume Analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Assume the role of a deterministic resume-to-job matching engine. Your responsibility is to strictly evaluate the compatibility between the provided Resume and Job Description and return a structured JSON response only. Do not include any commentary or explanations.\n\nResume Content:\n{{$json.resumeText}}\n\nJob Description Content:\n{{$json.jdText}}\n\nEvaluation Criteria:\n\nCalculate a compatibility score between 0 and 100 based on alignment in:\n  Skills\n  Experience\n  Qualifications\n  Responsibilities\n\nEnsure that the resume matches at least 30% of the job description content.\n\nDecision Rules:\n  If score ≥ 75 → recommended_action = \"INTERVIEW\"\n  If score < 75 → recommended_action = \"REJECT\"\n\nValidation Rules:\n\n  If the Job Description is not written in a professional hiring context → set:\n  score = 0\n  summary = \"BAD Job Description\"\n  recommended_action = \"REJECT\"\n\n  If the Resume is invalid, non-professional, or unrelated → set:\n  score = 0\n  summary = \"BAD Resume\"\n  recommended_action = \"REJECT\"\n\nThe summary must:\n  Be concise\n  Be under 300 characters\n  Strict Output Requirements:\n\nReturn ONLY valid JSON.\nDo NOT use markdown formatting.\nDo NOT include any explanation outside the JSON.\nDo NOT truncate the JSON structure.\nIf token limits are reached, shorten only the summary text.\n\nReturn the response exactly in this format:\n\n{\n\"score\": number,\n\"summary\": \"string\",\n\"recommended_action\": \"REJECT\",\n\"candidate_email\": {{$json.candidateEmail}}\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        848,
+        -48
+      ],
+      "id": "142b7ef4-0672-42aa-bf21-dd13879977e5",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {
+          "maxOutputTokens": 4096,
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        736,
+        192
+      ],
+      "id": "5f81b379-c50e-44ff-9e62-98af50ec00b0",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "YOUR_GEMINI_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst data = items[0].json;\n\n// Access original webhook body\n// const email = data.candidate_email || 'mr.zaakshaikh@gmail.com';\n\nconst finalDecision = data.score >= 70 ? \"INTERVIEW\" : \"REJECT\";\n\nconst decisionText =\n  finalDecision === \"INTERVIEW\"\n    ? \"Recommended for Interview\"\n    : \"Not Recommended at this Stage\";\n\nreturn [\n  {\n    json: {\n      // to: originalBody.candidate_email,\n      to: data.candidate_email,\n      subject: `Application Update – ${decisionText}`,\n      body: `\n        <div style=\"font-family: Arial, sans-serif; line-height: 1.6;\">\n          <h2>Resume Evaluation Result</h2>\n          <p><strong>Score:</strong> ${data.score} / 100</p>\n          <p><strong>Summary:</strong></p>\n          <p>${data.summary}</p>\n          <p><strong>Decision:</strong> ${decisionText}</p>\n        </div>\n      `\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        -48
+      ],
+      "id": "35d49760-1b64-4b16-a6ac-c51b19253a64",
+      "name": "Code Node - Format Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "=\n{{ $json.to }}",
+        "subject": "={{ $json.subject }}\n",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        -48
+      ],
+      "id": "b2725e0f-025e-4bb2-94a6-245ab446e154",
+      "name": "Send a message",
+      "webhookId": "YOUR_GMAIL_WEBHOOK_ID",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "YOUR_GMAIL_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"score\": {{ $json.score }},\n  \"summary\": \"{{ $json.summary }}\",\n  \"recommended_action\": \"{{ $json.recommended_action }}\"\n}\n",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1472,
+        -208
+      ],
+      "id": "513bc975-9302-439b-8ff5-cf94ad16dad1",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/resume-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -416,
+        -48
+      ],
+      "id": "0176466f-735e-47ca-a9d2-1f35477865af",
+      "name": "Resume Upload Trigger",
+      "webhookId": "YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "=resume",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        -144
+      ],
+      "id": "dbc12147-3a7f-45cc-8edc-8f7d76d1a608",
+      "name": "Extract from File (Resume)"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "=jd",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -64,
+        64
+      ],
+      "id": "64f8a63b-3543-4632-9dd8-c573be148f9c",
+      "name": "Extract from File (JD)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        -16
+      ],
+      "id": "a372335e-e13d-4da8-b814-fa4d21b2047e",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// After Merge (Combine by Position),\n// you will have ONLY ONE item\n\nconst resume_data = items[0].json;\nconst jd_data = items[1].json;\n\n// Adjust these field names based on your Extract node output\nconst resumeText = resume_data.text || resume_data.resumeText || \"\";\nconst jdText = jd_data.text || jd_data.jdText || \"\";\n\n\n// Get email from Webhook\nconst candidateEmail =\n  $node[\"Resume Upload Trigger\"].json.body?.candidateEmail || \"\";\n\nreturn [\n  {\n    json: {\n      resumeText,\n      jdText,\n      candidateEmail\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        -32
+      ],
+      "id": "79ba5700-afb5-4979-a374-6db66ebf180e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output;\n\nconst cleaned = raw\n  .replace(/```json/g, \"\");\n // .replace(/```/g, \"\")\n // .trim();\n\nconst parsed = JSON.parse(cleaned);\n\nreturn [{ json: parsed}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -48
+      ],
+      "id": "b967fd61-ec31-4bd0-8179-dbad74a6c5e7",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {
+    "Resume Upload Trigger": [
+      {
+        "json": {
+          "headers": {
+            "host": "YOUR_N8N_INSTANCE.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "content-length": "REDACTED",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.5",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "0.0.0.0",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "IN",
+            "cf-ray": "REDACTED",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "multipart/form-data; boundary=----WebKitFormBoundaryREDACTED",
+            "origin": "https://YOUR_FRONTEND_APP.lovable.app",
+            "priority": "u=1, i",
+            "referer": "https://YOUR_FRONTEND_APP.lovable.app/",
+            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Brave\";v=\"145\", \"Chromium\";v=\"145\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "sec-gpc": "1",
+            "x-forwarded-for": "0.0.0.0, 0.0.0.0",
+            "x-forwarded-host": "YOUR_N8N_INSTANCE.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "REDACTED",
+            "x-is-trusted": "yes",
+            "x-real-ip": "0.0.0.0"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "candidateEmail": "candidate@example.com"
+          },
+          "webhookUrl": "https://YOUR_N8N_INSTANCE.app.n8n.cloud/webhook/resume-analysis",
+          "executionMode": "production"
+        },
+        "binary": {
+          "resume": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "Sample_Resume.pdf",
+            "id": "filesystem-v2:workflows/YOUR_WORKFLOW_ID/executions/temp/binary_data/REDACTED_BINARY_ID_1",
+            "fileSize": "REDACTED",
+            "bytes": 0
+          },
+          "jd": {
+            "mimeType": "application/pdf",
+            "fileType": "pdf",
+            "fileExtension": "pdf",
+            "data": "filesystem-v2",
+            "fileName": "Sample_JD.pdf",
+            "id": "filesystem-v2:workflows/YOUR_WORKFLOW_ID/executions/temp/binary_data/REDACTED_BINARY_ID_2",
+            "fileSize": "REDACTED",
+            "bytes": 0
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Node - Format Email": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Resume Upload Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract from File (Resume)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract from File (JD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "Extract from File (Resume)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File (JD)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code Node - Format Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "YOUR_VERSION_ID",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "YOUR_WORKFLOW_ID",
+  "tags": []
+}
